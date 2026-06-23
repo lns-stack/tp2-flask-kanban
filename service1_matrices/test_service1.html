@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tests Service 1 — Matrices</title>
+  <style>
+    body { font-family: monospace; background: #1e1e2e; color: #cdd6f4; padding: 24px; margin: 0; }
+    h1   { color: #cba6f7; }
+    h2   { color: #89b4fa; margin-top: 28px; }
+    .pass  { color: #a6e3a1; }
+    .fail  { color: #f38ba8; }
+    .info  { color: #89dceb; font-size: 0.85em; }
+    button { background: #cba6f7; border: none; color: #1e1e2e; padding: 10px 22px;
+             border-radius: 6px; cursor: pointer; font-size: 1em; margin-top: 12px; }
+    button:hover { background: #b4befe; }
+    pre  { background: #313244; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 0.82em; }
+    #results { margin-top: 20px; }
+    .test-block { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; background: #25253a; }
+    #summary { font-size: 1.1em; margin-top: 20px; padding: 12px; border-radius: 8px; background: #313244; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Tests Service 1 — Calculs Matriciels</h1>
+  <p class="info">⚠️ Le service Flask doit tourner sur <strong>http://localhost:5001</strong><br>
+  Si CORS bloque, lancez Chrome avec <code>--disable-web-security</code> ou utilisez l'extension CORS Unblock.</p>
+  <button onclick="lancerTests()">▶ Lancer tous les tests</button>
+  <div id="results"></div>
+  <div id="summary"></div>
+
+<script>
+const BASE = "http://localhost:5001";
+let pass = 0, fail = 0;
+
+async function post(route, body) {
+  const r = await fetch(BASE + route, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return { status: r.status, data: await r.json() };
+}
+
+function afficher(nom, ok, detail) {
+  const div = document.createElement("div");
+  div.className = "test-block";
+  div.innerHTML = `<span class="${ok ? 'pass' : 'fail'}">${ok ? "✅" : "❌"} ${nom}</span>
+    <pre>${JSON.stringify(detail, null, 2)}</pre>`;
+  document.getElementById("results").appendChild(div);
+  ok ? pass++ : fail++;
+}
+
+async function lancerTests() {
+  pass = 0; fail = 0;
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("summary").innerHTML = "⏳ En cours...";
+
+  let r;
+
+  // ── Addition ──────────────────────────────────────────────────
+  r = await post("/matrices/add", { A: [[1,2],[3,4]], B: [[5,6],[7,8]] });
+  afficher("Addition 2x2 basique (200)", r.status === 200, r.data);
+
+  r = await post("/matrices/add", { A: [[1,2]], B: [[1,2],[3,4]] });
+  afficher("Addition — dimensions incompatibles (400)", r.status === 400, r.data);
+
+  r = await post("/matrices/add", { A: [[1,2]] });
+  afficher("Addition — clé B manquante (400)", r.status === 400, r.data);
+
+  // ── Multiplication ────────────────────────────────────────────
+  r = await post("/matrices/multiply", { A: [[1,2],[3,4]], B: [[5,6],[7,8]] });
+  afficher("Multiplication 2x2 (200)", r.status === 200 && r.data.operation === "multiplication", r.data);
+
+  r = await post("/matrices/multiply", { A: [[1,2,3]], B: [[1,2],[3,4]] });
+  afficher("Multiplication — colonnes/lignes incompatibles (400)", r.status === 400, r.data);
+
+  // ── Transposition ─────────────────────────────────────────────
+  r = await post("/matrices/transpose", { A: [[1,2,3],[4,5,6]] });
+  afficher("Transposition 2x3 → 3x2 (200)", r.status === 200 && r.data.resultat.length === 3, r.data);
+
+  // ── Déterminant ───────────────────────────────────────────────
+  r = await post("/matrices/determinant", { A: [[1,2],[3,4]] });
+  afficher("Déterminant 2x2 (200) — attendu -2", r.status === 200 && Math.abs(r.data.resultat - (-2)) < 0.001, r.data);
+
+  r = await post("/matrices/determinant", { A: [[1,2,3],[4,5,6]] });
+  afficher("Déterminant — matrice non carrée (400)", r.status === 400, r.data);
+
+  // ── Inverse ───────────────────────────────────────────────────
+  r = await post("/matrices/inverse", { A: [[1,2],[3,4]] });
+  afficher("Inverse 2x2 (200)", r.status === 200 && r.data.operation === "inverse", r.data);
+
+  r = await post("/matrices/inverse", { A: [[1,2],[2,4]] });
+  afficher("Inverse — matrice singulière (400)", r.status === 400, r.data);
+
+  r = await post("/matrices/inverse", { A: [[1,2,3],[4,5,6]] });
+  afficher("Inverse — non carrée (400)", r.status === 400, r.data);
+
+  document.getElementById("summary").innerHTML =
+    `<span class="${fail === 0 ? 'pass' : 'fail'}">
+      Résultat : ${pass} ✅ réussi(s) — ${fail} ❌ échoué(s)
+    </span>`;
+}
+</script>
+</body>
+</html>

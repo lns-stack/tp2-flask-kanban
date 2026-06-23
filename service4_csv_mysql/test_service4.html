@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tests Service 4 — Upload CSV</title>
+  <style>
+    body { font-family: monospace; background: #1e1e2e; color: #cdd6f4; padding: 24px; margin: 0; }
+    h1   { color: #cba6f7; }
+    .pass  { color: #a6e3a1; }
+    .fail  { color: #f38ba8; }
+    .info  { color: #89dceb; font-size: 0.85em; }
+    button { background: #cba6f7; border: none; color: #1e1e2e; padding: 10px 22px;
+             border-radius: 6px; cursor: pointer; font-size: 1em; margin-top: 12px; }
+    button:hover { background: #b4befe; }
+    pre  { background: #313244; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 0.82em; }
+    #results { margin-top: 20px; }
+    .test-block { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; background: #25253a; }
+    #summary { font-size: 1.1em; margin-top: 20px; padding: 12px; border-radius: 8px; background: #313244; }
+    label { display: block; margin-top: 16px; color: #89b4fa; }
+    input[type=file] { margin-top: 6px; color: #cdd6f4; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Tests Service 4 — Upload CSV → MySQL</h1>
+  <p class="info">⚠️ Service Flask requis sur <strong>http://localhost:5004</strong></p>
+
+  <label>📁 Upload manuel d'un fichier CSV réel :
+    <input type="file" id="fileInput" accept=".csv" />
+  </label>
+  <button onclick="uploadManuel()">📤 Uploader ce fichier</button>
+  <button onclick="lancerTests()" style="margin-left:12px">▶ Tests automatiques</button>
+
+  <div id="results"></div>
+  <div id="summary"></div>
+
+<script>
+const BASE = "http://localhost:5004";
+let pass = 0, fail = 0;
+
+function csvBlob(content, name) {
+  return new File([content], name, { type: "text/csv" });
+}
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`${BASE}/upload/csv`, { method: "POST", body: fd });
+  return { status: r.status, data: await r.json() };
+}
+
+async function getJson(route) {
+  const r = await fetch(BASE + route);
+  return { status: r.status, data: await r.json() };
+}
+
+function afficher(nom, ok, detail) {
+  const div = document.createElement("div");
+  div.className = "test-block";
+  div.innerHTML = `<span class="${ok ? 'pass' : 'fail'}">${ok ? "✅" : "❌"} ${nom}</span>
+    <pre>${JSON.stringify(detail, null, 2)}</pre>`;
+  document.getElementById("results").appendChild(div);
+  ok ? pass++ : fail++;
+}
+
+async function uploadManuel() {
+  const fi = document.getElementById("fileInput");
+  if (!fi.files[0]) { alert("Sélectionnez un fichier CSV d'abord."); return; }
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("summary").innerHTML = "⏳ Upload en cours...";
+  const r = await uploadFile(fi.files[0]);
+  afficher(`Upload manuel : ${fi.files[0].name}`, r.status === 201, r.data);
+  document.getElementById("summary").innerHTML =
+    `<span class="${r.status === 201 ? 'pass' : 'fail'}">
+      Statut : ${r.status} — ${r.status === 201 ? "✅ Succès" : "❌ Échec"}
+    </span>`;
+}
+
+async function lancerTests() {
+  pass = 0; fail = 0;
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("summary").innerHTML = "⏳ En cours...";
+
+  let r;
+
+  // ── CSV valide ────────────────────────────────────────────────
+  const csvValide = `nom_serie,valeur,categorie,date_mesure\ntest_auto,10.5,test,2024-06-01\ntest_auto,20.0,test,2024-06-02\n`;
+  r = await uploadFile(csvBlob(csvValide, "test.csv"));
+  afficher("Upload CSV valide (201)", r.status === 201 && r.data.statut === "success", r.data);
+
+  // ── Mauvaise extension ────────────────────────────────────────
+  r = await uploadFile(csvBlob(csvValide, "data.txt"));
+  afficher("Extension .txt refusée (400)", r.status === 400, r.data);
+
+  // ── Colonne manquante ─────────────────────────────────────────
+  const csvSansValeur = `nom_serie,categorie\ntest_auto,test\n`;
+  r = await uploadFile(csvBlob(csvSansValeur, "bad.csv"));
+  afficher("Colonne 'valeur' manquante (400)", r.status === 400, r.data);
+
+  // ── Valeurs non numériques ────────────────────────────────────
+  const csvBadNum = `nom_serie,valeur\ntest_auto,abc\ntest_auto,xyz\n`;
+  r = await uploadFile(csvBlob(csvBadNum, "bad_nums.csv"));
+  afficher("Toutes valeurs non numériques (400)", r.status === 400, r.data);
+
+  // ── CSV mixte (lignes valides + invalides) ────────────────────
+  const csvMixte = `nom_serie,valeur,categorie\nbon,12.0,ok\nmauvais,xyz,ko\nbon,14.5,ok\n`;
+  r = await uploadFile(csvBlob(csvMixte, "mixte.csv"));
+  afficher("CSV mixte — invalides ignorées (201)", r.status === 201 && r.data.lignes_inserees === 2, r.data);
+
+  // ── Liste des séries ──────────────────────────────────────────
+  r = await getJson("/upload/series");
+  afficher("Liste des séries (200)", r.status === 200 && "series" in r.data, r.data);
+
+  document.getElementById("summary").innerHTML =
+    `<span class="${fail === 0 ? 'pass' : 'fail'}">
+      Résultat : ${pass} ✅ réussi(s) — ${fail} ❌ échoué(s)
+    </span>`;
+}
+</script>
+</body>
+</html>

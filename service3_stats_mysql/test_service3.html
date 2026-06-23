@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tests Service 3 — Stats MySQL</title>
+  <style>
+    body { font-family: monospace; background: #1e1e2e; color: #cdd6f4; padding: 24px; margin: 0; }
+    h1   { color: #cba6f7; }
+    .pass  { color: #a6e3a1; }
+    .fail  { color: #f38ba8; }
+    .info  { color: #89dceb; font-size: 0.85em; }
+    button { background: #cba6f7; border: none; color: #1e1e2e; padding: 10px 22px;
+             border-radius: 6px; cursor: pointer; font-size: 1em; margin-top: 12px; }
+    button:hover { background: #b4befe; }
+    pre  { background: #313244; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 0.82em; }
+    #results { margin-top: 20px; }
+    .test-block { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; background: #25253a; }
+    #summary { font-size: 1.1em; margin-top: 20px; padding: 12px; border-radius: 8px; background: #313244; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Tests Service 3 — Statistiques MySQL</h1>
+  <p class="info">⚠️ Service Flask requis sur <strong>http://localhost:5003</strong><br>
+  La base MySQL doit être chargée (via Service 4 + donnees_exemple.csv)</p>
+  <button onclick="lancerTests()">▶ Lancer tous les tests</button>
+  <div id="results"></div>
+  <div id="summary"></div>
+
+<script>
+const BASE = "http://localhost:5003";
+let pass = 0, fail = 0;
+
+async function get(route) {
+  const r = await fetch(BASE + route);
+  return { status: r.status, data: await r.json() };
+}
+
+function afficher(nom, ok, detail) {
+  const div = document.createElement("div");
+  div.className = "test-block";
+  div.innerHTML = `<span class="${ok ? 'pass' : 'fail'}">${ok ? "✅" : "❌"} ${nom}</span>
+    <pre>${JSON.stringify(detail, null, 2)}</pre>`;
+  document.getElementById("results").appendChild(div);
+  ok ? pass++ : fail++;
+}
+
+async function lancerTests() {
+  pass = 0; fail = 0;
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("summary").innerHTML = "⏳ En cours...";
+
+  let r;
+
+  // ── /db/stats/describe ────────────────────────────────────────
+  r = await get("/db/stats/describe?serie=serie_A");
+  afficher("Describe serie_A (200)", r.status === 200 && r.data.source === "mysql", r.data);
+
+  r = await get("/db/stats/describe");
+  afficher("Describe — paramètre manquant (400)", r.status === 400, r.data);
+
+  r = await get("/db/stats/describe?serie=INEXISTANTE");
+  afficher("Describe — série inconnue (404)", r.status === 404, r.data);
+
+  // ── /db/stats/correlation ─────────────────────────────────────
+  r = await get("/db/stats/correlation?serie_x=serie_A&serie_y=serie_B");
+  afficher("Corrélation serie_A/serie_B (200)", r.status === 200 && "r" in r.data.resultat, r.data);
+
+  r = await get("/db/stats/correlation?serie_y=serie_B");
+  afficher("Corrélation — serie_x manquant (400)", r.status === 400, r.data);
+
+  r = await get("/db/stats/correlation?serie_x=INCONNUE&serie_y=serie_B");
+  afficher("Corrélation — série inconnue (404)", r.status === 404, r.data);
+
+  document.getElementById("summary").innerHTML =
+    `<span class="${fail === 0 ? 'pass' : 'fail'}">
+      Résultat : ${pass} ✅ réussi(s) — ${fail} ❌ échoué(s)
+    </span>`;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tests Service 5 — C/ctypes</title>
+  <style>
+    body { font-family: monospace; background: #1e1e2e; color: #cdd6f4; padding: 24px; margin: 0; }
+    h1   { color: #cba6f7; }
+    .pass  { color: #a6e3a1; }
+    .fail  { color: #f38ba8; }
+    .info  { color: #89dceb; font-size: 0.85em; }
+    button { background: #cba6f7; border: none; color: #1e1e2e; padding: 10px 22px;
+             border-radius: 6px; cursor: pointer; font-size: 1em; margin-top: 12px; }
+    button:hover { background: #b4befe; }
+    pre  { background: #313244; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 0.82em; }
+    #results { margin-top: 20px; }
+    .test-block { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; background: #25253a; }
+    #summary { font-size: 1.1em; margin-top: 20px; padding: 12px; border-radius: 8px; background: #313244; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Tests Service 5 — C/ctypes Bridge</h1>
+  <p class="info">⚠️ Service Flask requis sur <strong>http://localhost:5005</strong><br>
+  La bibliothèque C doit être compilée (<code>./compile.sh</code>)</p>
+  <button onclick="lancerTests()">▶ Lancer tous les tests</button>
+  <div id="results"></div>
+  <div id="summary"></div>
+
+<script>
+const BASE = "http://localhost:5005";
+let pass = 0, fail = 0;
+
+async function post(route, body) {
+  const r = await fetch(BASE + route, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return { status: r.status, data: await r.json() };
+}
+
+async function get(route) {
+  const r = await fetch(BASE + route);
+  return { status: r.status, data: await r.json() };
+}
+
+function afficher(nom, ok, detail) {
+  const div = document.createElement("div");
+  div.className = "test-block";
+  div.innerHTML = `<span class="${ok ? 'pass' : 'fail'}">${ok ? "✅" : "❌"} ${nom}</span>
+    <pre>${JSON.stringify(detail, null, 2)}</pre>`;
+  document.getElementById("results").appendChild(div);
+  ok ? pass++ : fail++;
+}
+
+const DATA = [12.5, 15.3, 8.7, 21.0, 13.2, 9.8, 17.6, 11.4];
+
+async function lancerTests() {
+  pass = 0; fail = 0;
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("summary").innerHTML = "⏳ En cours...";
+
+  let r;
+
+  // Health check
+  r = await get("/c/health");
+  afficher("Health check (200)", r.status === 200 && r.data.statut === "ok", r.data);
+
+  // /c/stats/describe
+  r = await post("/c/stats/describe", { data: DATA });
+  afficher("Describe complet (200)", r.status === 200 && r.data.moteur === "C/ctypes", r.data);
+
+  r = await post("/c/stats/describe", { valeurs: DATA });
+  afficher("Describe — clé manquante (400)", r.status === 400, r.data);
+
+  // /c/stats/mean
+  r = await post("/c/stats/mean", { data: DATA });
+  afficher("Moyenne — attendu ~13.6875", r.status === 200 && Math.abs(r.data.resultat - 13.6875) < 0.01, r.data);
+
+  // /c/stats/stddev
+  r = await post("/c/stats/stddev", { data: DATA });
+  afficher("Écart-type (200)", r.status === 200 && r.data.resultat > 0, r.data);
+
+  r = await post("/c/stats/stddev", { data: [1.0] });
+  afficher("Écart-type — trop court (400)", r.status === 400, r.data);
+
+  // /c/stats/median
+  r = await post("/c/stats/median", { data: DATA });
+  afficher("Médiane (200)", r.status === 200 && r.data.resultat > 0, r.data);
+
+  // /c/stats/dot
+  r = await post("/c/stats/dot", { v1: [1,2,3], v2: [4,5,6] });
+  afficher("Produit scalaire [1,2,3]·[4,5,6] = 32", r.status === 200 && Math.abs(r.data.resultat - 32) < 0.001, r.data);
+
+  r = await post("/c/stats/dot", { v1: [1,2,3], v2: [4,5] });
+  afficher("Produit scalaire — longueurs ≠ (400)", r.status === 400, r.data);
+
+  document.getElementById("summary").innerHTML =
+    `<span class="${fail === 0 ? 'pass' : 'fail'}">
+      Résultat : ${pass} ✅ réussi(s) — ${fail} ❌ échoué(s)
+    </span>`;
+}
+</script>
+</body>
+</html>
